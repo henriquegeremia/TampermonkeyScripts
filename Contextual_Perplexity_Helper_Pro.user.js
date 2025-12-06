@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.5
+// @version      4.6
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.5', // Adicionado: Versão do script
+        version: '4.6', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -151,15 +151,34 @@
         },
 
         downloadFile(content, filename, mimeType = 'text/markdown') {
+            console.log('downloadFile: Initiating download process.');
+            console.log(`downloadFile: Filename: "${filename}", MimeType: "${mimeType}"`);
+
             const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
+            console.log(`downloadFile: Blob created, size: ${blob.size} bytes.`);
+
+            if (blob.size === 0) {
+                console.warn('downloadFile: Blob is empty, download might not work as expected.');
+                Utils.showToast('Erro ao exportar: Conteúdo vazio.', 'warning');
+                return;
+            }
+
             const url = URL.createObjectURL(blob);
+            console.log(`downloadFile: Object URL created: ${url}`);
+
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
+            a.style.display = 'none'; // Hide the element
             document.body.appendChild(a);
+            console.log('downloadFile: Anchor element created and appended to body, triggering click.');
             a.click();
+            console.log('downloadFile: Anchor element click triggered.');
+
+            // Clean up
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            console.log('downloadFile: Cleanup performed (element removed, URL revoked).');
         },
 
         copyToClipboard(text) {
