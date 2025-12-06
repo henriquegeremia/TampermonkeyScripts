@@ -270,21 +270,40 @@
 
         async autoScrollLibrary() {
             Utils.showToast('Iniciando rolagem automática...', 'info');
+            console.log('Auto-scroll started.');
             let lastCount = 0;
             let stableCount = 0;
 
             for (let i = 0; i < 100; i++) { // Increased iterations for more aggressive scrolling
-                window.scrollTo(0, document.documentElement.scrollHeight || document.body.scrollHeight); // Fallback for compatibility
+                const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+                const clientHeight = document.documentElement.clientHeight || window.innerHeight;
+                const currentScrollY = window.scrollY;
+
+                console.log(`Iteration ${i + 1}:`);
+                console.log(`  Scroll Height: ${scrollHeight}, Client Height: ${clientHeight}, Current Scroll Y: ${currentScrollY}`);
+
+                window.scrollTo(0, scrollHeight);
+                console.log(`  Scrolled to: ${scrollHeight}`);
+
                 await new Promise(r => setTimeout(r, 1500)); // Increased wait time
+
                 const currentCount = document.querySelectorAll('a[href^="/search/"]').length;
+                console.log(`  Previous Count: ${lastCount}, Current Conversations Count: ${currentCount}`);
+
                 if (currentCount === lastCount) {
                     stableCount++;
-                    if (stableCount >= 3) break;
+                    console.log(`  Stable Count: ${stableCount}`);
+                    if (stableCount >= 3) {
+                        console.log('  Content count stable for 3 iterations. Stopping scroll.');
+                        break;
+                    }
                 } else {
                     stableCount = 0;
+                    console.log('  New content detected, stable count reset.');
                 }
                 lastCount = currentCount;
             }
+            console.log('Auto-scroll finished.');
             // window.scrollTo(0, 0); // Do not scroll to top immediately, let user see the loaded content
             Utils.showToast(`Rolagem concluída! ${lastCount} conversas carregadas`, 'success');
         },
