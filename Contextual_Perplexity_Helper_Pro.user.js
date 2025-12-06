@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.3
+// @version      4.4
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.3', // Adicionado: Versão do script
+        version: '4.4', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -189,6 +189,40 @@
             } catch {
                 return {};
             }
+        },
+
+        // New utility function to find the main scrollable element
+        findScrollableElement() {
+            // Prioritize document.scrollingElement for modern browsers
+            if (document.scrollingElement) {
+                return document.scrollingElement;
+            }
+
+            // Fallback: Check if html or body is scrollable
+            const isHtmlScrollable = document.documentElement.scrollHeight > document.documentElement.clientHeight;
+            const isBodyScrollable = document.body.scrollHeight > document.body.clientHeight;
+
+            if (isHtmlScrollable && window.getComputedStyle(document.documentElement).overflowY !== 'hidden') {
+                return document.documentElement;
+            }
+            if (isBodyScrollable && window.getComputedStyle(document.body).overflowY !== 'hidden') {
+                return document.body;
+            }
+
+            // Last resort: Look for an element with overflow-y: auto/scroll and scrollable content
+            // This is a more general approach if document.scrollingElement doesn't work for a specific site
+            const potentialScrollables = document.querySelectorAll('div, main, section, article, aside');
+            for (const el of potentialScrollables) {
+                if (el.scrollHeight > el.clientHeight && (window.getComputedStyle(el).overflowY === 'auto' || window.getComputedStyle(el).overflowY === 'scroll')) {
+                    // Check if it's visible or has significant size to avoid tiny hidden scrollables
+                    const rect = el.getBoundingClientRect();
+                    if (rect.height > 100 && rect.width > 100) { // arbitrary size check
+                        return el;
+                    }
+                }
+            }
+
+            return null; // No suitable scrollable element found
         }
     };
 
@@ -274,18 +308,27 @@
             let lastCount = 0;
             let stableCount = 0;
 
-            for (let i = 0; i < 100; i++) { // Increased iterations for more aggressive scrolling
-                const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-                const clientHeight = document.documentElement.clientHeight || window.innerHeight;
-                const currentScrollY = window.scrollY;
+            const scrollableElement = Utils.findScrollableElement();
+            if (!scrollableElement) {
+                Utils.showToast('Erro: Não foi possível encontrar um elemento rolável.', 'error');
+                console.error('Auto-scroll failed: No scrollable element found.');
+                return;
+            }
+            console.log('Scrollable element identified:', scrollableElement, 'Tag:', scrollableElement.tagName, 'ID:', scrollableElement.id, 'Class:', scrollableElement.className);
+
+            for (let i = 0; i < 100; i++) {
+                const scrollHeight = scrollableElement.scrollHeight;
+                const clientHeight = scrollableElement.clientHeight;
+                const currentScrollY = scrollableElement.scrollTop; // Use scrollTop for element scrolling
 
                 console.log(`Iteration ${i + 1}:`);
-                console.log(`  Scroll Height: ${scrollHeight}, Client Height: ${clientHeight}, Current Scroll Y: ${currentScrollY}`);
+                console.log(`  Scroll Height: ${scrollHeight}, Client Height: ${clientHeight}, Current Scroll Top: ${currentScrollY}`);
 
-                window.scrollTo(0, scrollHeight);
-                console.log(`  Scrolled to: ${scrollHeight}`);
+                // Scroll the identified element
+                scrollableElement.scrollTo(0, scrollHeight);
+                console.log(`  Scrolled element to: ${scrollHeight}`);
 
-                await new Promise(r => setTimeout(r, 1500)); // Increased wait time
+                await new Promise(r => setTimeout(r, 1500));
 
                 const currentCount = document.querySelectorAll('a[href^="/search/"]').length;
                 console.log(`  Previous Count: ${lastCount}, Current Conversations Count: ${currentCount}`);
@@ -304,7 +347,6 @@
                 lastCount = currentCount;
             }
             console.log('Auto-scroll finished.');
-            // window.scrollTo(0, 0); // Do not scroll to top immediately, let user see the loaded content
             Utils.showToast(`Rolagem concluída! ${lastCount} conversas carregadas`, 'success');
         },
 
