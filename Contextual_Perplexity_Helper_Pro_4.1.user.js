@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.1
+// @version      4.2
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,6 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
+        version: '4.2', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -272,9 +273,9 @@
             let lastCount = 0;
             let stableCount = 0;
 
-            for (let i = 0; i < 30; i++) {
-                window.scrollTo(0, document.body.scrollHeight);
-                await new Promise(r => setTimeout(r, 1000));
+            for (let i = 0; i < 100; i++) { // Increased iterations for more aggressive scrolling
+                window.scrollTo(0, document.documentElement.scrollHeight || document.body.scrollHeight); // Fallback for compatibility
+                await new Promise(r => setTimeout(r, 1500)); // Increased wait time
                 const currentCount = document.querySelectorAll('a[href^="/search/"]').length;
                 if (currentCount === lastCount) {
                     stableCount++;
@@ -284,7 +285,7 @@
                 }
                 lastCount = currentCount;
             }
-            window.scrollTo(0, 0);
+            // window.scrollTo(0, 0); // Do not scroll to top immediately, let user see the loaded content
             Utils.showToast(`Rolagem concluída! ${lastCount} conversas carregadas`, 'success');
         },
 
@@ -623,7 +624,7 @@
                 <div style="display: flex; align-items: center;">
                     <span style="font-size: 20px; margin-right: 8px;">${this.getEmoji()}</span>
                     <div style="flex: 1;">
-                        <div style="font-weight: 600; font-size: 14px; color: ${Utils.isDarkMode() ? '#93e1d8' : '#20808d'};">Helper Pro</div>
+                        <div style="font-weight: 600; font-size: 14px; color: ${Utils.isDarkMode() ? '#93e1d8' : '#20808d'};">Helper Pro v${CONFIG.version}</div>
                         <div style="font-size: 11px; color: ${Utils.isDarkMode() ? '#9ca3af' : '#6b7280'};">${this.getContextLabel()}</div>
                     </div>
                     <button id="dock-close" style="background: none; border: none; font-size: 18px; cursor: pointer; color: ${Utils.isDarkMode() ? '#9ca3af' : '#6b7280'}; padding: 4px;">✕</button>
