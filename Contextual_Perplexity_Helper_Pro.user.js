@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.7
+// @version      4.8
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.7', // Adicionado: Versão do script
+        version: '4.8', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -374,14 +374,13 @@
             Actions._isAutoScrollPaused = !Actions._isAutoScrollPaused;
             if (Actions._autoScrollPauseResumeButton) {
                 Actions._autoScrollPauseResumeButton.textContent = Actions._isAutoScrollPaused ? 'Continuar' : 'Pausar';
-                Utils.showToast(Actions._isAutoScrollPaused ? 'Rolagem Pausada.' : 'Rolagem Retomada.', 'info');
+                Actions._updateAutoScrollStatus(Actions._isAutoScrollPaused ? 'Rolagem Pausada.' : 'Rolagem Retomada.');
             }
         },
 
         _requestAutoScrollStopAndDownload() {
             Actions._autoScrollStopRequested = true;
-            Utils.showToast('Parando rolagem e preparando download...', 'info');
-            // The download logic will be handled within autoScrollLibrary after it detects stopRequested
+            Actions._updateAutoScrollStatus('Parando rolagem...');
         },
         exportLibraryFromData(conversations, format = 'json') {
             const timestamp = new Date().toISOString().split('T')[0];
