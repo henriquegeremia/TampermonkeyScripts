@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.6
+// @version      4.7
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.6', // Adicionado: Versão do script
+        version: '4.7', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -302,25 +302,88 @@
 
     // ========== AÇÕES ========== 
     const Actions = {
-        async exportLibrary(format = 'json') {
-            Utils.showToast('Coletando conversas...', 'info');
-            const items = document.querySelectorAll('a[href^="/search/"]');
-            if (items.length === 0) {
-                Utils.showToast('Nenhuma conversa encontrada', 'warning');
-                return;
+        _isAutoScrolling: false,
+        _isAutoScrollPaused: false,
+        _autoScrollStopRequested: false,
+        _autoScrollControlsElement: null,
+        _autoScrollStatusElement: null,
+        _autoScrollPauseResumeButton: null,
+        _autoScrollStopDownloadButton: null,
+        _autoScrollConversations: [], // To store conversations loaded during scroll
+
+        _createAutoScrollControlsUI() {
+            if (Actions._autoScrollControlsElement) return; // UI already exists
+
+            const controlsDiv = document.createElement('div');
+            controlsDiv.id = 'autoscroll-controls';
+            controlsDiv.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 10px 15px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 2147483647;
+                font-family: sans-serif;
+                display: flex;
+                gap: 10px;
+                align-items: center;
+                display: none; /* Hidden by default */
+                font-size: 14px;
+            `;
+
+            controlsDiv.innerHTML = `
+                <span id="autoscroll-status">Rolagem em andamento...</span>
+                <button id="autoscroll-pause-resume" style="background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">Pausar</button>
+                <button id="autoscroll-stop-download" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">Parar e Baixar</button>
+            `;
+
+            document.body.appendChild(controlsDiv);
+
+            Actions._autoScrollControlsElement = controlsDiv;
+            Actions._autoScrollStatusElement = controlsDiv.querySelector('#autoscroll-status');
+            Actions._autoScrollPauseResumeButton = controlsDiv.querySelector('#autoscroll-pause-resume');
+            Actions._autoScrollStopDownloadButton = controlsDiv.querySelector('#autoscroll-stop-download');
+
+            Actions._autoScrollPauseResumeButton.onclick = Actions._toggleAutoScrollPause;
+            Actions._autoScrollStopDownloadButton.onclick = Actions._requestAutoScrollStopAndDownload;
+        },
+
+        _showAutoScrollControls() {
+            if (Actions._autoScrollControlsElement) {
+                Actions._autoScrollControlsElement.style.display = 'flex';
             }
+        },
 
-            const conversations = Array.from(items).map(link => {
-                const parent = link.closest('.relative, .flex');
-                return {
-                    title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
-                           link.textContent?.trim() || 'Sem título',
-                    url: link.href,
-                    description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
-                    timestamp: new Date().toISOString()
-                };
-            });
+        _hideAutoScrollControls() {
+            if (Actions._autoScrollControlsElement) {
+                Actions._autoScrollControlsElement.style.display = 'none';
+            }
+        },
 
+        _updateAutoScrollStatus(message) {
+            if (Actions._autoScrollStatusElement) {
+                Actions._autoScrollStatusElement.textContent = message;
+            }
+        },
+
+        _toggleAutoScrollPause() {
+            Actions._isAutoScrollPaused = !Actions._isAutoScrollPaused;
+            if (Actions._autoScrollPauseResumeButton) {
+                Actions._autoScrollPauseResumeButton.textContent = Actions._isAutoScrollPaused ? 'Continuar' : 'Pausar';
+                Utils.showToast(Actions._isAutoScrollPaused ? 'Rolagem Pausada.' : 'Rolagem Retomada.', 'info');
+            }
+        },
+
+        _requestAutoScrollStopAndDownload() {
+            Actions._autoScrollStopRequested = true;
+            Utils.showToast('Parando rolagem e preparando download...', 'info');
+            // The download logic will be handled within autoScrollLibrary after it detects stopRequested
+        },
+        exportLibraryFromData(conversations, format = 'json') {
             const timestamp = new Date().toISOString().split('T')[0];
             if (format === 'json') {
                 Utils.downloadFile(JSON.stringify(conversations, null, 2), `perplexity-library-${timestamp}.json`, 'application/json');
@@ -334,33 +397,95 @@
             Utils.showToast(`${conversations.length} conversas exportadas!`, 'success');
         },
 
+        async exportLibrary(format = 'json') {
+            // Utils.showToast('Coletando conversas...', 'info'); // Remove this
+            const items = document.querySelectorAll('a[href^="/search/"]');
+            if (items.length === 0) {
+                Utils.showToast('Nenhuma conversa encontrada', 'warning');
+                return;
+            }
+
+            const conversations = Array.from(items).map(link => {
+                const parent = link.closest('.relative, .flex');
+                return {
+                    title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
+                           link.textContent?.trim() || 'Sem título',
+                    url: link.href,
+                    description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
+                    timestamp: new Date().toISOString() // This is export time, not actual last mod time
+                };
+            });
+            Actions.exportLibraryFromData(conversations, format);
+        },
+
         async autoScrollLibrary() {
+            // Reset state variables
+            Actions._isAutoScrolling = true;
+            Actions._isAutoScrollPaused = false;
+            Actions._autoScrollStopRequested = false;
+            Actions._autoScrollConversations = [];
+
+            Actions._createAutoScrollControlsUI(); // Ensure UI exists
+            Actions._showAutoScrollControls();
+            Actions._updateAutoScrollStatus('Iniciando rolagem...');
+            if (Actions._autoScrollPauseResumeButton) {
+                Actions._autoScrollPauseResumeButton.textContent = 'Pausar';
+            }
+
             Utils.showToast('Iniciando rolagem automática...', 'info');
-            console.log('Auto-scroll started.');
+            console.log('Auto-scroll started. (v4.7)');
+
             let lastCount = 0;
             let stableCount = 0;
+            let iteration = 0;
 
             const scrollableElement = Utils.findScrollableElement();
             if (!scrollableElement) {
                 Utils.showToast('Erro: Não foi possível encontrar um elemento rolável.', 'error');
                 console.error('Auto-scroll failed: No scrollable element found.');
+                Actions._hideAutoScrollControls();
+                Actions._isAutoScrolling = false;
                 return;
             }
             console.log('Scrollable element identified:', scrollableElement, 'Tag:', scrollableElement.tagName, 'ID:', scrollableElement.id, 'Class:', scrollableElement.className);
 
-            for (let i = 0; i < 100; i++) {
+            while (Actions._isAutoScrolling && !Actions._autoScrollStopRequested) {
+                iteration++;
+                // Handle pause/resume
+                if (Actions._isAutoScrollPaused) {
+                    Actions._updateAutoScrollStatus(`Pausado (${lastCount} conversas)`);
+                    await new Promise(resolve => {
+                        const checkPause = setInterval(() => {
+                            if (!Actions._isAutoScrollPaused) {
+                                clearInterval(checkPause);
+                                resolve();
+                            }
+                        }, 500);
+                    });
+                    Actions._updateAutoScrollStatus(`Continuando rolagem... (${lastCount} conversas)`);
+                }
+
                 const scrollHeight = scrollableElement.scrollHeight;
                 const clientHeight = scrollableElement.clientHeight;
-                const currentScrollY = scrollableElement.scrollTop; // Use scrollTop for element scrolling
+                const currentScrollTop = scrollableElement.scrollTop;
 
-                console.log(`Iteration ${i + 1}:`);
-                console.log(`  Scroll Height: ${scrollHeight}, Client Height: ${clientHeight}, Current Scroll Top: ${currentScrollY}`);
+                console.log(`Iteration ${iteration}:`);
+                console.log(`  Scroll Height: ${scrollHeight}, Client Height: ${clientHeight}, Current Scroll Top: ${currentScrollTop}`);
+                Actions._updateAutoScrollStatus(`Rolando... (${lastCount} conversas)`);
 
-                // Scroll the identified element
-                scrollableElement.scrollTo(0, scrollHeight);
-                console.log(`  Scrolled element to: ${scrollHeight}`);
 
-                await new Promise(r => setTimeout(r, 1500));
+                // Only scroll if there's actual scrollable content
+                if (scrollHeight > clientHeight) {
+                    scrollableElement.scrollTo(0, scrollHeight);
+                    console.log(`  Scrolled element to: ${scrollHeight}`);
+                } else {
+                    console.log('  No scrollable content detected yet (scrollHeight <= clientHeight).');
+                }
+
+                await new Promise(r => setTimeout(r, 1500)); // Wait for content to load
+
+                // Check for stop request after wait
+                if (Actions._autoScrollStopRequested) break;
 
                 const currentCount = document.querySelectorAll('a[href^="/search/"]').length;
                 console.log(`  Previous Count: ${lastCount}, Current Conversations Count: ${currentCount}`);
@@ -368,8 +493,10 @@
                 if (currentCount === lastCount) {
                     stableCount++;
                     console.log(`  Stable Count: ${stableCount}`);
-                    if (stableCount >= 3) {
+                    Actions._updateAutoScrollStatus(`Conteúdo estável (${lastCount} conversas) - ${stableCount}x`);
+                    if (stableCount >= 3) { // Reduced from 3 to allow for quicker stopping if content is truly exhausted
                         console.log('  Content count stable for 3 iterations. Stopping scroll.');
+                        Actions._isAutoScrolling = false; // Mark as done scrolling
                         break;
                     }
                 } else {
@@ -377,9 +504,39 @@
                     console.log('  New content detected, stable count reset.');
                 }
                 lastCount = currentCount;
+
+                // Stop if max iterations reached
+                if (iteration >= 100 && !Actions._autoScrollStopRequested) {
+                    console.log('Max iterations reached. Stopping scroll.');
+                    Actions._isAutoScrolling = false;
+                }
+            }
+
+            // Finalization
+            Actions._hideAutoScrollControls();
+            if (Actions._autoScrollStopRequested) {
+                // User requested to stop and download
+                Utils.showToast('Rolagem interrompida pelo usuário.', 'info');
+                // Extract conversations
+                const items = document.querySelectorAll('a[href^="/search/"]');
+                Actions._autoScrollConversations = Array.from(items).map(link => {
+                    const parent = link.closest('.relative, .flex');
+                    return {
+                        title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
+                               link.textContent?.trim() || 'Sem título',
+                        url: link.href,
+                        description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
+                        timestamp: new Date().toISOString() // This is export time, not actual last mod time
+                    };
+                });
+                Utils.showToast(`${Actions._autoScrollConversations.length} conversas carregadas. Preparando download...`, 'success');
+                Actions.exportLibraryFromData(Actions._autoScrollConversations); // Call a new export function
+            } else {
+                Utils.showToast(`Rolagem concluída! ${lastCount} conversas carregadas`, 'success');
             }
             console.log('Auto-scroll finished.');
-            Utils.showToast(`Rolagem concluída! ${lastCount} conversas carregadas`, 'success');
+            Actions._isAutoScrolling = false; // Ensure state is reset
+            Actions._autoScrollStopRequested = false; // Ensure state is reset
         },
 
         exportArticleMarkdown() {
