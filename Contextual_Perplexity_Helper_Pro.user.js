@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.4
+// @version      4.5
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.4', // Adicionado: Versão do script
+        version: '4.5', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -193,12 +193,21 @@
 
         // New utility function to find the main scrollable element
         findScrollableElement() {
-            // Prioritize document.scrollingElement for modern browsers
-            if (document.scrollingElement) {
+            // 1. Prioritize document.scrollingElement for modern browsers (usually html)
+            if (document.scrollingElement && document.scrollingElement.scrollHeight > document.scrollingElement.clientHeight) {
                 return document.scrollingElement;
             }
 
-            // Fallback: Check if html or body is scrollable
+            // 2. Look for elements explicitly marked as scrollable by CSS (e.g., Tailwind's overflow-y-auto)
+            // This is a common pattern for frameworks that create custom scroll containers.
+            const potentialCssScrollables = document.querySelectorAll('[style*="overflow-y: auto"], [style*="overflow-y: scroll"], [class*="overflow-y-auto"], [class*="overflow-y-scroll"]');
+            for (const el of potentialCssScrollables) {
+                if (el.scrollHeight > el.clientHeight) {
+                    return el;
+                }
+            }
+
+            // 3. Fallback: Check if html or body is truly scrollable (when content overflows)
             const isHtmlScrollable = document.documentElement.scrollHeight > document.documentElement.clientHeight;
             const isBodyScrollable = document.body.scrollHeight > document.body.clientHeight;
 
@@ -208,16 +217,20 @@
             if (isBodyScrollable && window.getComputedStyle(document.body).overflowY !== 'hidden') {
                 return document.body;
             }
-
-            // Last resort: Look for an element with overflow-y: auto/scroll and scrollable content
-            // This is a more general approach if document.scrollingElement doesn't work for a specific site
-            const potentialScrollables = document.querySelectorAll('div, main, section, article, aside');
-            for (const el of potentialScrollables) {
-                if (el.scrollHeight > el.clientHeight && (window.getComputedStyle(el).overflowY === 'auto' || window.getComputedStyle(el).overflowY === 'scroll')) {
-                    // Check if it's visible or has significant size to avoid tiny hidden scrollables
-                    const rect = el.getBoundingClientRect();
-                    if (rect.height > 100 && rect.width > 100) { // arbitrary size check
-                        return el;
+            
+            // 4. Last resort: Iterate common container elements and check if they are scrollable
+            // This is a more general approach if document.scrollingElement doesn't work and no explicit CSS classes are found.
+            const commonContainerTags = ['div', 'main', 'section', 'article', 'aside'];
+            for (const tag of commonContainerTags) {
+                const elements = document.getElementsByTagName(tag);
+                for (const el of elements) {
+                    const computedStyle = window.getComputedStyle(el);
+                    if ((computedStyle.overflowY === 'auto' || computedStyle.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+                        // Check if it's visible and has significant size to avoid tiny hidden scrollables
+                        const rect = el.getBoundingClientRect();
+                        if (rect.height > 100 && rect.width > 100) { // arbitrary size check
+                            return el;
+                        }
                     }
                 }
             }
