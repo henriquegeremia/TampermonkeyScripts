@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.8
+// @version      4.9
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.8', // Adicionado: Versão do script
+        version: '4.9', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -431,8 +431,8 @@
                 Actions._autoScrollPauseResumeButton.textContent = 'Pausar';
             }
 
-            Utils.showToast('Iniciando rolagem automática...', 'info');
-            console.log('Auto-scroll started. (v4.7)');
+            // Utils.showToast('Iniciando rolagem automática...', 'info'); // Removed to avoid UI conflict
+            console.log('Auto-scroll started. (v4.9)');
 
             let lastCount = 0;
             let stableCount = 0;
