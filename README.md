@@ -1,4 +1,5 @@
 # 🚀 Contextual Perplexity Helper Pro
+![henriquegeremiaTampermonkeyScripts_-_Google_Chrome_chrome_zubUofWkn6](https://github.com/user-attachments/assets/034ce538-e102-480e-92c2-98ef924a330b)
 
 Este é um script Tampermonkey projetado para aprimorar sua experiência de navegação em plataformas como Perplexity, YouTube, ChatGPT e Gemini, oferecendo uma Barra de Dock discreta e um "Modo Fantasma" para maior conveniência e funcionalidades de exportação.
 
