@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.9
+// @version      4.10
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.9', // Adicionado: Versão do script
+        version: '4.10', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -512,30 +512,46 @@
             }
 
             // Finalization
-            Actions._hideAutoScrollControls();
-            if (Actions._autoScrollStopRequested) {
-                // User requested to stop and download
-                Utils.showToast('Rolagem interrompida pelo usuário.', 'info');
-                // Extract conversations
-                const items = document.querySelectorAll('a[href^="/search/"]');
-                Actions._autoScrollConversations = Array.from(items).map(link => {
-                    const parent = link.closest('.relative, .flex');
-                    return {
-                        title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
-                               link.textContent?.trim() || 'Sem título',
-                        url: link.href,
-                        description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
-                        timestamp: new Date().toISOString() // This is export time, not actual last mod time
-                    };
-                });
-                Utils.showToast(`${Actions._autoScrollConversations.length} conversas carregadas. Preparando download...`, 'success');
-                Actions.exportLibraryFromData(Actions._autoScrollConversations); // Call a new export function
-            } else {
-                Utils.showToast(`Rolagem concluída! ${lastCount} conversas carregadas`, 'success');
-            }
-            console.log('Auto-scroll finished.');
             Actions._isAutoScrolling = false; // Ensure state is reset
-            Actions._autoScrollStopRequested = false; // Ensure state is reset
+            
+            // Extract conversations regardless of how scroll finished
+            const items = document.querySelectorAll('a[href^="/search/"]');
+            Actions._autoScrollConversations = Array.from(items).map(link => {
+                const parent = link.closest('.relative, .flex');
+                return {
+                    title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
+                           link.textContent?.trim() || 'Sem título',
+                    url: link.href,
+                    description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
+                    timestamp: new Date().toISOString()
+                };
+            });
+            const finalCount = Actions._autoScrollConversations.length;
+
+            if (Actions._autoScrollStopRequested) {
+                Utils.showToast('Rolagem interrompida pelo usuário.', 'info');
+                Actions._updateAutoScrollStatus(`Parado! ${finalCount} conversas carregadas.`);
+            } else {
+                Utils.showToast(`Rolagem concluída! ${finalCount} conversas carregadas`, 'success');
+                Actions._updateAutoScrollStatus(`Concluído! ${finalCount} conversas carregadas.`);
+            }
+
+            // Keep controls visible and change their function
+            Actions._showAutoScrollControls(); // Ensure visible
+            // Remove previous event listeners
+            if (Actions._autoScrollPauseResumeButton) {
+                Actions._autoScrollPauseResumeButton.onclick = null;
+                Actions._autoScrollPauseResumeButton.textContent = 'Baixar JSON';
+                Actions._autoScrollPauseResumeButton.onclick = () => Actions.exportLibraryFromData(Actions._autoScrollConversations, 'json');
+            }
+            if (Actions._autoScrollStopDownloadButton) {
+                Actions._autoScrollStopDownloadButton.onclick = null;
+                Actions._autoScrollStopDownloadButton.textContent = 'Baixar MD';
+                Actions._autoScrollStopDownloadButton.onclick = () => Actions.exportLibraryFromData(Actions._autoScrollConversations, 'md');
+            }
+
+            console.log('Auto-scroll finished.');
+            Actions._autoScrollStopRequested = false; // Reset for next run
         },
 
         exportArticleMarkdown() {
