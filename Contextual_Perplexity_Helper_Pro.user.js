@@ -557,15 +557,34 @@
         exportArticleMarkdown() {
             Utils.showToast('Exportando artigo completo...', 'info');
             const titleEl = document.querySelector('[data-testid*="thread-title"], h1.font-display, h1, .text-3xl');
-            const contentEl = document.querySelector('main[class*="ThreadContent"], [class*="thread-content"], main, article');
             const title = titleEl?.textContent?.trim() || document.title.replace(' | Perplexity', '');
+
             let content = '';
+            const contentEl = document.querySelector('main[class*="ThreadContent"], [class*="thread-content"], main, article');
+
             if (contentEl) {
-                const messageBlocks = contentEl.querySelectorAll('[class*="message"], [class*="answer"], [class*="query"]');
+                const messageBlocks = contentEl.querySelectorAll('[class*="message"], [class*="answer"], [class*="query"], [data-message-author-role]');
+
                 if (messageBlocks.length > 0) {
-                    messageBlocks.forEach((block, idx) => {
-                        const text = block.innerText?.trim();
-                        if (text) content += `\n## Seção ${idx + 1}\n\n${text}\n\n`;
+                    messageBlocks.forEach((block) => {
+                        let text = block.innerText?.trim();
+                        let speaker = '';
+                        const classList = block.classList.toString();
+                        const authorRole = block.getAttribute('data-message-author-role');
+
+                        if (authorRole === 'user' || classList.includes('query')) {
+                            speaker = '### 👤 Usuário';
+                        } else if (authorRole === 'assistant' || classList.includes('answer')) {
+                            speaker = '### 🤖 Perplexity AI';
+                        }
+
+                        if (text) {
+                            if (speaker) {
+                                content += `${speaker}\n\n${text}\n\n---\n`;
+                            } else {
+                                content += `\n## Seção\n\n${text}\n\n---\n`;
+                            }
+                        }
                     });
                 } else {
                     content = contentEl.innerText;
@@ -573,6 +592,12 @@
             } else {
                 content = document.body.innerText;
             }
+
+            if (!content.trim()) {
+                 Utils.showToast('Nenhum conteúdo para exportar.', 'warning');
+                 return;
+            }
+
             const markdown = [`# ${title}`, '', `**Fonte:** ${window.location.href}`, `**Exportado:** ${new Date().toLocaleString('pt-BR')}`, '', '---', '', content.trim()].join('\n');
             const filename = `perplexity-${Utils.sanitizeFileName(title)}.md`;
             Utils.downloadFile(markdown, filename);
