@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.11
+// @version      4.12
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -10,12 +10,12 @@
 // @run-at       document-idle
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.11', // Adicionado: Versão do script
+        version: '4.12', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -40,15 +40,18 @@
                 callback();
             }
         });
-        urlChangeObserver.observe(document.querySelector('title'), {
-            childList: true,
-            subtree: true
-        });
+        const titleEl = document.querySelector('title');
+        if (titleEl) {
+            urlChangeObserver.observe(titleEl, {
+                childList: true,
+                subtree: true
+            });
+        }
 
         const originalPushState = history.pushState;
         const originalReplaceState = history.replaceState;
 
-        history.pushState = function(...args) {
+        history.pushState = function (...args) {
             originalPushState.apply(this, args);
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
@@ -56,7 +59,7 @@
             }
         };
 
-        history.replaceState = function(...args) {
+        history.replaceState = function (...args) {
             originalReplaceState.apply(this, args);
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
@@ -77,7 +80,7 @@
         isDarkMode() {
             const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const bodyDark = document.body.classList.contains('dark') ||
-                           document.documentElement.classList.contains('dark');
+                document.documentElement.classList.contains('dark');
             return systemDark || bodyDark;
         },
 
@@ -100,8 +103,8 @@
 
         sanitizeFileName(name) {
             return name.replace(/[\\/:"*?<>|]/g, '_')
-                      .replace(/\s+/g, '_')
-                      .substring(0, 100);
+                .replace(/\s+/g, '_')
+                .substring(0, 100);
         },
 
         showToast(message, type = 'info') {
@@ -236,7 +239,7 @@
             if (isBodyScrollable && window.getComputedStyle(document.body).overflowY !== 'hidden') {
                 return document.body;
             }
-            
+
             // 4. Last resort: Iterate common container elements and check if they are scrollable
             // This is a more general approach if document.scrollingElement doesn't work and no explicit CSS classes are found.
             const commonContainerTags = ['div', 'main', 'section', 'article', 'aside'];
@@ -274,7 +277,7 @@
 
         isYouTube() {
             return window.location.hostname.includes(CONFIG.youtubeDomain) &&
-                   window.location.pathname.includes('/watch');
+                window.location.pathname.includes('/watch');
         },
 
         isChatGPT() {
@@ -335,11 +338,22 @@
                 font-size: 14px;
             `;
 
-            controlsDiv.innerHTML = `
-                <span id="autoscroll-status">Rolagem em andamento...</span>
-                <button id="autoscroll-pause-resume" style="background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">Pausar</button>
-                <button id="autoscroll-stop-download" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">Parar e Baixar</button>
-            `;
+            const statusSpan = document.createElement('span');
+            statusSpan.id = 'autoscroll-status';
+            statusSpan.textContent = 'Rolagem em andamento...';
+            controlsDiv.appendChild(statusSpan);
+
+            const pauseBtn = document.createElement('button');
+            pauseBtn.id = 'autoscroll-pause-resume';
+            pauseBtn.style.cssText = 'background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;';
+            pauseBtn.textContent = 'Pausar';
+            controlsDiv.appendChild(pauseBtn);
+
+            const stopBtn = document.createElement('button');
+            stopBtn.id = 'autoscroll-stop-download';
+            stopBtn.style.cssText = 'background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;';
+            stopBtn.textContent = 'Parar e Baixar';
+            controlsDiv.appendChild(stopBtn);
 
             document.body.appendChild(controlsDiv);
 
@@ -387,7 +401,7 @@
             if (format === 'json') {
                 Utils.downloadFile(JSON.stringify(conversations, null, 2), `perplexity-library-${timestamp}.json`, 'application/json');
             } else if (format === 'csv') {
-                const csv = ['Título,URL,Descrição', ...conversations.map(c => `"${c.title.replace(/"/g, '""')}","${c.url}","${c.description.replace(/"/g, '""')}"` )].join('\n');
+                const csv = ['Título,URL,Descrição', ...conversations.map(c => `"${c.title.replace(/"/g, '""')}","${c.url}","${c.description.replace(/"/g, '""')}"`)].join('\n');
                 Utils.downloadFile(csv, `perplexity-library-${timestamp}.csv`, 'text/csv');
             } else if (format === 'md') {
                 const md = ['# Biblioteca Perplexity', '', `Exportado em: ${new Date().toLocaleString('pt-BR')}`, `Total: ${conversations.length} conversas`, '', ...conversations.map((c, i) => `## ${i + 1}. ${c.title}\n\n**Link:** ${c.url}\n\n${c.description}\n\n---\n`)].join('\n');
@@ -408,7 +422,7 @@
                 const parent = link.closest('.relative, .flex');
                 return {
                     title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
-                           link.textContent?.trim() || 'Sem título',
+                        link.textContent?.trim() || 'Sem título',
                     url: link.href,
                     description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
                     timestamp: new Date().toISOString() // This is export time, not actual last mod time
@@ -513,14 +527,14 @@
 
             // Finalization
             Actions._isAutoScrolling = false; // Ensure state is reset
-            
+
             // Extract conversations regardless of how scroll finished
             const items = document.querySelectorAll('a[href^="/search/"]');
             Actions._autoScrollConversations = Array.from(items).map(link => {
                 const parent = link.closest('.relative, .flex');
                 return {
                     title: link.querySelector('[data-testid^="thread-title"]')?.textContent?.trim() ||
-                           link.textContent?.trim() || 'Sem título',
+                        link.textContent?.trim() || 'Sem título',
                     url: link.href,
                     description: parent?.querySelector('.text-quiet, .line-clamp-2')?.textContent?.trim() || '',
                     timestamp: new Date().toISOString()
@@ -594,8 +608,8 @@
             }
 
             if (!content.trim()) {
-                 Utils.showToast('Nenhum conteúdo para exportar.', 'warning');
-                 return;
+                Utils.showToast('Nenhum conteúdo para exportar.', 'warning');
+                return;
             }
 
             const markdown = [`# ${title}`, '', `**Fonte:** ${window.location.href}`, `**Exportado:** ${new Date().toLocaleString('pt-BR')}`, '', '---', '', content.trim()].join('\n');
@@ -775,7 +789,10 @@
         createDockBar() {
             this.dockBar = document.createElement('div');
             const emoji = this.getEmoji();
-            this.dockBar.innerHTML = `<span style="opacity: 0;">${emoji}</span>`;
+            const emojiSpan = document.createElement('span');
+            emojiSpan.style.opacity = '0';
+            emojiSpan.textContent = emoji;
+            this.dockBar.appendChild(emojiSpan);
             this.dockBar.className = 'dock-bar';
             this.dockBar.setAttribute('aria-label', 'Perplexity Helper');
             this.dockBar.style.cssText = `
@@ -828,7 +845,7 @@
             this.isGhostMode = true;
             this.ghostButton = document.createElement('button');
             const emoji = this.getEmoji();
-            this.ghostButton.innerHTML = emoji;
+            this.ghostButton.textContent = emoji;
             this.ghostButton.setAttribute('aria-label', 'Perplexity Helper (Ghost Mode)');
             this.ghostButton.style.cssText = `
                 position: fixed;
@@ -910,16 +927,36 @@
 
             const header = document.createElement('div');
             header.style.cssText = `padding: 16px; border-bottom: 1px solid ${Utils.isDarkMode() ? '#2d313b' : '#e5e7eb'};`;
-            header.innerHTML = `
-                <div style="display: flex; align-items: center;">
-                    <span style="font-size: 20px; margin-right: 8px;">${this.getEmoji()}</span>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 600; font-size: 14px; color: ${Utils.isDarkMode() ? '#93e1d8' : '#20808d'};">Helper Pro v${CONFIG.version}</div>
-                        <div style="font-size: 11px; color: ${Utils.isDarkMode() ? '#9ca3af' : '#6b7280'};">${this.getContextLabel()}</div>
-                    </div>
-                    <button id="dock-close" style="background: none; border: none; font-size: 18px; cursor: pointer; color: ${Utils.isDarkMode() ? '#9ca3af' : '#6b7280'}; padding: 4px;">✕</button>
-                </div>
-            `;
+            const headerContent = document.createElement('div');
+            headerContent.style.cssText = 'display: flex; align-items: center;';
+
+            const emojiSpan = document.createElement('span');
+            emojiSpan.style.cssText = 'font-size: 20px; margin-right: 8px;';
+            emojiSpan.textContent = this.getEmoji();
+            headerContent.appendChild(emojiSpan);
+
+            const infoDiv = document.createElement('div');
+            infoDiv.style.flex = '1';
+
+            const versionDiv = document.createElement('div');
+            versionDiv.style.cssText = `font-weight: 600; font-size: 14px; color: ${Utils.isDarkMode() ? '#93e1d8' : '#20808d'};`;
+            versionDiv.textContent = `Helper Pro v${CONFIG.version}`;
+            infoDiv.appendChild(versionDiv);
+
+            const contextDiv = document.createElement('div');
+            contextDiv.style.cssText = `font-size: 11px; color: ${Utils.isDarkMode() ? '#9ca3af' : '#6b7280'};`;
+            contextDiv.textContent = this.getContextLabel();
+            infoDiv.appendChild(contextDiv);
+
+            headerContent.appendChild(infoDiv);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.id = 'dock-close';
+            closeBtn.style.cssText = `background: none; border: none; font-size: 18px; cursor: pointer; color: ${Utils.isDarkMode() ? '#9ca3af' : '#6b7280'}; padding: 4px;`;
+            closeBtn.textContent = '✕';
+            headerContent.appendChild(closeBtn);
+
+            header.appendChild(headerContent);
             this.panel.appendChild(header);
 
             const content = document.createElement('div');
@@ -929,7 +966,11 @@
 
             const footer = document.createElement('div');
             footer.style.cssText = `padding: 12px 16px; border-top: 1px solid ${Utils.isDarkMode() ? '#2d313b' : '#e5e7eb'}; font-size: 11px; color: ${Utils.isDarkMode() ? '#6b7280' : '#9ca3af'}; text-align: center;`;
-            footer.innerHTML = `<kbd style="padding: 2px 6px; background: ${Utils.isDarkMode() ? '#2d313b' : '#f3f4f6'}; border-radius: 3px;">Ctrl+Shift+P</kbd> Toggle`;
+            const kbd = document.createElement('kbd');
+            kbd.style.cssText = `padding: 2px 6px; background: ${Utils.isDarkMode() ? '#2d313b' : '#f3f4f6'}; border-radius: 3px;`;
+            kbd.textContent = 'Ctrl+Shift+P';
+            footer.appendChild(kbd);
+            footer.appendChild(document.createTextNode(' Toggle'));
             this.panel.appendChild(footer);
 
             document.body.appendChild(this.panel);
@@ -988,7 +1029,7 @@
         createSelectionButton() {
             if (this.selectionBtn) return;
             this.selectionBtn = document.createElement('button');
-            this.selectionBtn.innerHTML = '🔍';
+            this.selectionBtn.textContent = '🔍';
             this.selectionBtn.style.cssText = `
                 position: fixed; bottom: 90px; right: 24px;
                 width: 40px; height: 40px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);
