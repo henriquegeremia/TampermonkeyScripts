@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.12
+// @version      4.13 // 2025-12-25
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.12', // Adicionado: Versão do script
+        version: '4.13', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -1084,12 +1084,263 @@
         }
     }
 
+    // ========== MODAL DE PROMPT ==========
+    class PromptModal {
+        constructor() {
+            this.modal = null;
+            this.overlay = null;
+        }
+
+        create(videoTitle, videoUrl) {
+            if (this.modal) return;
+
+            // Overlay
+            this.overlay = document.createElement('div');
+            this.overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0, 0, 0, 0.6); z-index: 2147483648;
+                backdrop-filter: blur(2px); animation: fadeIn 0.2s;
+            `;
+            this.overlay.onclick = (e) => {
+                if (e.target === this.overlay) this.close();
+            };
+
+            // Modal
+            this.modal = document.createElement('div');
+            this.modal.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                width: 90%; max-width: 500px; background: ${Utils.isDarkMode() ? '#1a1d23' : '#ffffff'};
+                color: ${Utils.isDarkMode() ? '#e4e4e7' : '#18181b'};
+                border: 1px solid ${Utils.isDarkMode() ? '#3a3f4b' : '#e5e7eb'};
+                border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+                padding: 24px; z-index: 2147483649; display: flex; flex-direction: column; gap: 16px;
+                font-family: Roboto, Arial, sans-serif; animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            `;
+
+            // Title
+            const title = document.createElement('h3');
+            title.textContent = '✨ Resumir com Perplexity';
+            title.style.cssText = 'margin: 0; font-size: 18px; font-weight: 600;';
+            this.modal.appendChild(title);
+
+            // Context Input
+            const inputLabel = document.createElement('label');
+            inputLabel.textContent = 'Foco ou Instruções Adicionais (Opcional)';
+            inputLabel.style.cssText = `font-size: 12px; color: ${Utils.isDarkMode() ? '#a1a1aa' : '#71717a'}; font-weight: 500;`;
+            this.modal.appendChild(inputLabel);
+
+            const textarea = document.createElement('textarea');
+            textarea.placeholder = 'Ex: "Foque nos exemplos de código", "Explique como se fosse para uma criança"...';
+            textarea.style.cssText = `
+                width: 100%; height: 80px; padding: 10px; border-radius: 8px;
+                background: ${Utils.isDarkMode() ? '#27272a' : '#f4f4f5'};
+                border: 1px solid ${Utils.isDarkMode() ? '#3f3f46' : '#d4d4d8'};
+                color: inherit; font-family: inherit; resize: vertical; margin-top: -8px;
+                font-size: 14px;
+            `;
+            textarea.focus();
+            this.modal.appendChild(textarea);
+
+            // Options container
+            const optionsContainer = document.createElement('div');
+            optionsContainer.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap;';
+
+            const presets = ['Geral', 'Técnico', 'Insights', 'Crítico'];
+            presets.forEach(preset => {
+                const chip = document.createElement('button');
+                chip.textContent = preset;
+                chip.style.cssText = `
+                    padding: 6px 12px; border-radius: 20px; border: 1px solid ${Utils.isDarkMode() ? '#3f3f46' : '#d4d4d8'};
+                    background: transparent; color: inherit; font-size: 12px; cursor: pointer; transition: all 0.2s;
+                `;
+                chip.onmouseenter = () => chip.style.background = Utils.isDarkMode() ? '#3f3f46' : '#e4e4e7';
+                chip.onmouseleave = () => chip.style.background = 'transparent';
+                chip.onclick = () => {
+                    textarea.value = (textarea.value + ' ' + preset).trim();
+                    textarea.focus();
+                };
+                optionsContainer.appendChild(chip);
+            });
+            this.modal.appendChild(optionsContainer);
+
+            // Actions
+            const actionsDiv = document.createElement('div');
+            actionsDiv.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.style.cssText = `
+                padding: 8px 16px; border-radius: 18px; border: none; background: transparent;
+                color: ${Utils.isDarkMode() ? '#a1a1aa' : '#71717a'}; font-weight: 500; cursor: pointer;
+            `;
+            cancelBtn.onclick = () => this.close();
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = 'Perplexity';
+            confirmBtn.style.cssText = `
+                padding: 8px 20px; border-radius: 18px; border: none;
+                background: linear-gradient(135deg, #22d3ee 0%, #0ea5e9 100%);
+                color: black; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+            `;
+            confirmBtn.onclick = () => {
+                this.submit(videoTitle, videoUrl, textarea.value);
+            };
+
+            actionsDiv.appendChild(cancelBtn);
+            actionsDiv.appendChild(confirmBtn);
+            this.modal.appendChild(actionsDiv);
+
+            document.body.appendChild(this.overlay);
+            document.body.appendChild(this.modal);
+
+            // Focus textarea
+            setTimeout(() => textarea.focus(), 50);
+        }
+
+        close() {
+            if (this.modal) {
+                this.modal.style.animation = 'slideDownFadeOut 0.2s forwards';
+                this.overlay.style.animation = 'fadeOut 0.2s forwards';
+                setTimeout(() => {
+                    this.modal?.remove();
+                    this.overlay?.remove();
+                    this.modal = null;
+                    this.overlay = null;
+                }, 200);
+            }
+        }
+
+        submit(title, url, instructions) {
+            let prompt = `Analise este vídeo do YouTube: "${title}"\nURL: ${url}\n\n`;
+            if (instructions) {
+                prompt += `Instruções Adicionais: ${instructions}\n\n`;
+            }
+            prompt += `Por favor, forneça um resumo detalhado, insights principais e conclusões.`;
+
+            Actions.sendToPerplexity(prompt);
+            this.close();
+        }
+    }
+
+    // ========== YOUTUBE ADAPTER ==========
+    class YouTubeAdapter {
+        constructor() {
+            this.modal = new PromptModal();
+            this.observer = null;
+            this.buttonId = 'perplexity-helper-yt-btn';
+        }
+
+        init() {
+            this.injectButton();
+            this.observe();
+            // Add global styles for animations
+            if (!document.getElementById('perplexity-modal-styles')) {
+                const style = document.createElement('style');
+                style.id = 'perplexity-modal-styles';
+                style.textContent = `
+                    @keyframes slideUpFade {
+                        from { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
+                        to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                    }
+                    @keyframes slideDownFadeOut {
+                        from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                        to { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
+                    }
+                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        observe() {
+            if (this.observer) this.observer.disconnect();
+            this.observer = new MutationObserver((mutations) => {
+                if (!document.getElementById(this.buttonId)) {
+                    this.injectButton();
+                }
+            });
+            const target = document.querySelector('ytd-app') || document.body;
+            this.observer.observe(target, { childList: true, subtree: true });
+        }
+
+        injectButton() {
+            // Try multiple selectors for the action bar (where like/share buttons are)
+            // #top-level-buttons-computed is the robust container inside ytd-menu-renderer
+            const actionContainer = document.querySelector('#top-level-buttons-computed');
+
+            if (actionContainer && !document.getElementById(this.buttonId)) {
+
+                const btn = document.createElement('button');
+                btn.id = this.buttonId;
+                btn.className = 'yt-spec-button-shape-next yt-spec-button-shape-next--tonal yt-spec-button-shape-next--mono yt-spec-button-shape-next--size-m';
+                btn.style.cssText = `
+                    margin-left: 8px;
+                    border-radius: 18px;
+                    border: none;
+                    background: rgba(255, 255, 255, 0.1);
+                    color: var(--yt-spec-text-primary);
+                    font-family: Roboto, Arial, sans-serif;
+                    font-size: 14px;
+                    font-weight: 500;
+                    height: 36px;
+                    padding: 0 16px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    transition: background 0.2s;
+                `;
+
+                // Adjust for light mode if needed
+                if (!Utils.isDarkMode()) {
+                    btn.style.background = 'rgba(0, 0, 0, 0.05)';
+                }
+
+                btn.innerHTML = `
+                    <span style="font-size: 16px; display: flex;">✨</span>
+                    <span>Resumir</span>
+                `;
+
+                btn.onmouseenter = () => {
+                    btn.style.background = Utils.isDarkMode() ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
+                };
+                btn.onmouseleave = () => {
+                    btn.style.background = Utils.isDarkMode() ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+                };
+
+                btn.onclick = () => {
+                    const title = document.title.replace(' - YouTube', '');
+                    const url = window.location.href;
+                    this.modal.create(title, url);
+                };
+
+                // Insert as first child or after subscribe? 
+                // Usually Action Bar items are Like, Dislike, Share... 
+                // Inserting at the beginning makes it very visible.
+                actionContainer.insertBefore(btn, actionContainer.firstChild);
+                console.log('Perplexity Button injected into Action Bar');
+            }
+        }
+    }
+
     // ========== INICIALIZAÇÃO ========== 
     let panel = new HybridPanel();
+    let ytAdapter = new YouTubeAdapter();
 
     function init() {
-        panel.create();
-        console.log('🚀 Hybrid Perplexity Helper v4.1 carregado! Modo:', panel.dockState.mode || 'dock');
+        if (Context.isYouTube()) {
+            ytAdapter.init();
+            // We still create the panel for legacy access or other features if needed, 
+            // but the main interaction on YouTube will be the new button.
+            // panel.create(); // Optional: Disable standard panel on YouTube if we strictly want only the new button
+            // sticking to keeping it enabled for now as fallback/extra features
+            panel.create();
+        } else {
+            panel.create();
+        }
+
+        console.log('🚀 Hybrid Perplexity Helper v4.12 carregado!');
     }
 
     if (document.readyState === 'loading') {
@@ -1099,7 +1350,12 @@
     }
 
     observeUrlChange(() => {
-        setTimeout(() => panel.recreate(), 500);
+        setTimeout(() => {
+            panel.recreate();
+            if (Context.isYouTube()) {
+                ytAdapter.init();
+            }
+        }, 500);
     });
 
     document.addEventListener('keydown', (e) => {
