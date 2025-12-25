@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contextual Perplexity Helper Pro
 // @namespace    http://tampermonkey.net/
-// @version      4.13 // 2025-12-25
+// @version      4.14 // 2025-12-25
 // @description  Dock Bar discreto + Ghost Mode para Perplexity, YouTube, ChatGPT e Gemini
 // @author       User
 // @match        *://*/*
@@ -15,7 +15,7 @@
 
     // ========== CONFIGURAÇÃO ========== 
     const CONFIG = {
-        version: '4.13', // Adicionado: Versão do script
+        version: '4.14', // Adicionado: Versão do script
         perplexityDomain: 'perplexity.ai',
         youtubeDomain: 'youtube.com',
         chatgptDomain: 'chatgpt.com',
@@ -1222,105 +1222,175 @@
         }
     }
 
-    // ========== YOUTUBE ADAPTER ==========
+    // ========== YOUTUBE ADAPTER (THUMBNAIL HOVER) ==========
     class YouTubeAdapter {
         constructor() {
             this.modal = new PromptModal();
-            this.observer = null;
-            this.buttonId = 'perplexity-helper-yt-btn';
+            this.hoverTimeout = null;
         }
 
         init() {
-            this.injectButton();
-            this.observe();
-            // Add global styles for animations
-            if (!document.getElementById('perplexity-modal-styles')) {
-                const style = document.createElement('style');
-                style.id = 'perplexity-modal-styles';
-                style.textContent = `
-                    @keyframes slideUpFade {
-                        from { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
-                        to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-                    }
-                    @keyframes slideDownFadeOut {
-                        from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-                        to { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
-                    }
-                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-                    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-                `;
-                document.head.appendChild(style);
-            }
+            this.addStyles();
+            this.setupDelegatedEvents();
         }
 
-        observe() {
-            if (this.observer) this.observer.disconnect();
-            this.observer = new MutationObserver((mutations) => {
-                if (!document.getElementById(this.buttonId)) {
-                    this.injectButton();
-                }
-            });
-            const target = document.querySelector('ytd-app') || document.body;
-            this.observer.observe(target, { childList: true, subtree: true });
-        }
-
-        injectButton() {
-            // Try multiple selectors for the action bar (where like/share buttons are)
-            // #top-level-buttons-computed is the robust container inside ytd-menu-renderer
-            const actionContainer = document.querySelector('#top-level-buttons-computed');
-
-            if (actionContainer && !document.getElementById(this.buttonId)) {
-
-                const btn = document.createElement('button');
-                btn.id = this.buttonId;
-                btn.className = 'yt-spec-button-shape-next yt-spec-button-shape-next--tonal yt-spec-button-shape-next--mono yt-spec-button-shape-next--size-m';
-                btn.style.cssText = `
-                    margin-left: 8px;
-                    border-radius: 18px;
+        addStyles() {
+            if (document.getElementById('perplexity-yt-styles')) return;
+            const style = document.createElement('style');
+            style.id = 'perplexity-yt-styles';
+            style.textContent = `
+                .pplx-thumb-btn {
+                    position: absolute;
+                    top: 8px;
+                    right: 8px;
+                    z-index: 9999;
+                    background: #6366f1; /* Indigo 500 */
+                    color: white;
                     border: none;
-                    background: rgba(255, 255, 255, 0.1);
-                    color: var(--yt-spec-text-primary);
-                    font-family: Roboto, Arial, sans-serif;
-                    font-size: 14px;
-                    font-weight: 500;
-                    height: 36px;
-                    padding: 0 16px;
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 12px;
+                    font-weight: 600;
                     cursor: pointer;
                     display: flex;
                     align-items: center;
-                    gap: 6px;
-                    transition: background 0.2s;
-                `;
+                    gap: 4px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    opacity: 0;
+                    transform: scale(0.9);
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    text-decoration: none !important;
+                    pointer-events: auto;
+                }
+                .pplx-thumb-btn:hover {
+                    background: #4f46e5; /* Indigo 600 */
+                    transform: scale(1);
+                    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+                }
+                .pplx-thumb-btn.visible {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+                .pplx-thumb-btn svg {
+                    width: 14px;
+                    height: 14px;
+                    fill: currentColor;
+                }
+                /* Ensure thumbnail container allows absolute positioning check */
+                ytd-thumbnail, #thumbnail {
+                    position: relative !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
 
-                // Adjust for light mode if needed
-                if (!Utils.isDarkMode()) {
-                    btn.style.background = 'rgba(0, 0, 0, 0.05)';
+        setupDelegatedEvents() {
+            // Use delegated event listeners for performance
+            document.body.addEventListener('mouseenter', (e) => {
+                const thumbnail = e.target.closest && e.target.closest('ytd-thumbnail, a#thumbnail');
+                if (thumbnail) {
+                    this.handleThumbnailHover(thumbnail);
+                }
+            }, true); // Use capture to ensure we catch it
+
+            document.body.addEventListener('mouseleave', (e) => {
+                const thumbnail = e.target.closest && e.target.closest('ytd-thumbnail, a#thumbnail');
+                if (thumbnail) {
+                    this.handleThumbnailLeave(thumbnail);
+                }
+            }, true);
+        }
+
+        handleThumbnailHover(thumbnail) {
+            // Check if button already exists
+            let btn = thumbnail.querySelector('.pplx-thumb-btn');
+
+            if (!btn) {
+                btn = this.createButton();
+                // Append to thumbnail. 
+                // Note: ytd-thumbnail often has an 'a#thumbnail' child. 
+                // We want to be inside the relative container so it positions correctly.
+                // Usually ytd-thumbnail is the Custom Element host.
+                // Sometimes strictly appending to 'a#thumbnail' (the link) is better for positioning relative to image.
+                const anchor = thumbnail.querySelector('a#thumbnail');
+                if (anchor) {
+                    anchor.appendChild(btn);
+                } else {
+                    thumbnail.appendChild(btn);
                 }
 
-                btn.innerHTML = `
-                    <span style="font-size: 16px; display: flex;">✨</span>
-                    <span>Resumir</span>
-                `;
-
-                btn.onmouseenter = () => {
-                    btn.style.background = Utils.isDarkMode() ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
-                };
-                btn.onmouseleave = () => {
-                    btn.style.background = Utils.isDarkMode() ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
-                };
-
-                btn.onclick = () => {
-                    const title = document.title.replace(' - YouTube', '');
-                    const url = window.location.href;
-                    this.modal.create(title, url);
-                };
-
-                // Insert as first child or after subscribe? 
-                // Usually Action Bar items are Like, Dislike, Share... 
-                // Inserting at the beginning makes it very visible.
-                actionContainer.insertBefore(btn, actionContainer.firstChild);
-                console.log('Perplexity Button injected into Action Bar');
+                // Prevent clicking the video when clicking the button
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.onButtonClick(thumbnail);
+                });
             }
+
+            // Show button with a slight delay to avoid flickering on fast mouse movement
+            // requestAnimationFrame -> visible
+            requestAnimationFrame(() => {
+                btn.classList.add('visible');
+            });
+        }
+
+        handleThumbnailLeave(thumbnail) {
+            const btn = thumbnail.querySelector('.pplx-thumb-btn');
+            if (btn) {
+                btn.classList.remove('visible');
+            }
+        }
+
+        createButton() {
+            const btn = document.createElement('button');
+            btn.className = 'pplx-thumb-btn';
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24"><path d="M19,1L14,6V1H19M3,22L8,17V22H3M4.4,12L12,19.6L19.6,12L12,4.4L4.4,12Z" /></svg>
+                <span>Resumir</span>
+            `;
+            return btn;
+        }
+
+        onButtonClick(thumbnail) {
+            // Extract Info
+            const anchor = thumbnail.querySelector('a#thumbnail') || thumbnail.closest('a');
+            if (!anchor) return;
+
+            const url = anchor.href;
+
+            // Try to find title
+            // Strategy 1: Look for #video-title id (common in grid renderers)
+            // Strategy 2: Look for 'title' attribute on details
+            // Strategy 3: Look for aria-label on the anchor
+
+            let title = '';
+
+            // Siblings search (common structure: thumbnail + details)
+            // Go up to renderer
+            const renderer = thumbnail.closest('ytd-rich-grid-media, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer');
+            if (renderer) {
+                const titleEl = renderer.querySelector('#video-title');
+                if (titleEl) title = titleEl.textContent.trim() || titleEl.getAttribute('title');
+            }
+
+            // Fallback: aria-label
+            if (!title && anchor.getAttribute('aria-label')) {
+                // Aria label often has "Title by Author ViewCount Time", we might need to clean it or just use it.
+                // It's usually "Video Title by Author..."
+                const aria = anchor.getAttribute('aria-label');
+                // Simple heuristic: split by " by " if possible, or just take the whole string.
+                title = aria;
+            }
+
+            // Fallback: img alt
+            if (!title) {
+                const img = thumbnail.querySelector('img');
+                if (img) title = img.getAttribute('alt');
+            }
+
+            if (!title) title = "Vídeo do YouTube";
+
+            this.modal.create(title, url);
         }
     }
 
